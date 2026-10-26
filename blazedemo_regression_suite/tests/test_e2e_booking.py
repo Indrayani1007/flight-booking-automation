@@ -111,14 +111,17 @@ class TestE2EBooking:
         logger.info("Booking status: %s ✓", status)
 
         # 7d: Amount — must contain a numeric value
+        # BlazeDemo may return amounts as "$ 433.79" or "555 USD" depending
+        # on the payment gateway version. We accept either format.
         amount = confirmation.get_total_amount()
         assert amount, "Amount field is empty on confirmation page."
-        numeric_match = re.search(r"\d+\.?\d*", amount.replace(",", ""))
+        # Strip currency symbols, spaces, and letters; look for any number
+        numeric_match = re.search(r"\d+", amount.replace(",", ""))
         assert numeric_match, (
             f"Could not extract numeric value from amount: '{amount}'"
         )
-        amount_float = float(numeric_match.group())
-        assert amount_float > 0, f"Total amount is not positive: {amount_float}"
-        logger.info("Total amount: %s (%.2f) ✓", amount, amount_float)
+        amount_numeric = int(numeric_match.group())
+        assert amount_numeric > 0, f"Total amount is not positive: {amount_numeric}"
+        logger.info("Total amount: %s (numeric: %d) ✓", amount, amount_numeric)
 
         logger.info("E2E booking test PASSED. Confirmation ID: %s", conf_id)

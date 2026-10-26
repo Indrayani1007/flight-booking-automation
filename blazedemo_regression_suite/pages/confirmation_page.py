@@ -143,4 +143,3 @@ class ConfirmationPage(BasePage):
             return bool(conf_id)
         except Exception:  # noqa: BLE001
             return False
-"""

@@ -1,0 +1,46 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# ── Virtual environment ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Pytest & testing ─────────────────────────────────────────────────────────
+.pytest_cache/
+.cache/
+*.pytest_cache
+
+# ── Test reports & runtime artifacts ─────────────────────────────────────────
+blazedemo_regression_suite/reports/report.html
+blazedemo_regression_suite/reports/test_run.log
+blazedemo_regression_suite/reports/ci_output.log
+blazedemo_regression_suite/reports/screenshots/*.png
+
+# ── WebDriver manager cache ──────────────────────────────────────────────────
+.wdm/
+
+# ── IDE / editor ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+
+# ── Coverage ─────────────────────────────────────────────────────────────────
+.coverage
+htmlcov/
+coverage.xml

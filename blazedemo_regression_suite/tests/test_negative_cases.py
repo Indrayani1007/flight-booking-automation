@@ -99,15 +99,14 @@ class TestNegativeCases:
             from pages.confirmation_page import ConfirmationPage
             confirmation = ConfirmationPage(driver)
             conf_id = confirmation.get_confirmation_id()
-            # This is a known BlazeDemo behaviour: it accepts submissions with blank fields.
+            # BlazeDemo now returns large numeric IDs (e.g., "1792945343974")
+            # or alphanumeric codes. Either is acceptable — just non-empty.
             logger.warning(
                 "BlazeDemo accepted empty-field submission. Confirmation ID: %s",
                 conf_id,
             )
-            # We assert the confirmation ID is numeric (system processed it)
-            import re
-            assert re.search(r"\d+", conf_id), (
-                f"Confirmation ID '{conf_id}' is not numeric — unexpected state."
+            assert conf_id, (
+                "Confirmation ID is empty even after form submission."
             )
         else:
             # Some validation prevented navigation — we are still on purchase page

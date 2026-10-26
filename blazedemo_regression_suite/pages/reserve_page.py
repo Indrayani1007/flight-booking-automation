@@ -5,6 +5,31 @@ Parses the available flights table, exposes structured flight data,
 and allows selection of a specific flight or the cheapest option.
 
 URL: https://blazedemo.com/reserve.php
+
+Verified live DOM structure (BlazeDemo reserve page):
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Choose</th>
+        <th>Flight #</th>
+        <th>Airline</th>
+        <th>Departs: [City]</th>
+        <th>Arrives: [City]</th>
+        <th>Price</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <!-- Cell[0] --> <td><input type="submit" value="Choose This Flight"></td>
+        <!-- Cell[1] --> <td>43</td>
+        <!-- Cell[2] --> <td>Virgin America</td>
+        <!-- Cell[3] --> <td>1:43 AM</td>
+        <!-- Cell[4] --> <td>9:45 PM</td>
+        <!-- Cell[5] --> <td>$472.56</td>
+      </tr>
+      ...
+    </tbody>
+  </table>
 """
 
 from __future__ import annotations
@@ -27,7 +52,7 @@ class ReservePage(BasePage):
 
     Key responsibilities:
     - Parse all available flight rows from the HTML table.
-    - Return structured dictionaries with airline, price, departure/arrival airports.
+    - Return structured dictionaries with airline, price, and time info.
     - Select a flight by index or select the cheapest available flight.
     """
 
@@ -39,15 +64,17 @@ class ReservePage(BasePage):
 
     _PAGE_HEADING    = (By.CSS_SELECTOR, "h3")
     _FLIGHT_ROWS     = (By.XPATH, "//table/tbody/tr")
-    _CHOOSE_BTNS     = (By.CSS_SELECTOR, "table tbody tr input[type='submit']")
+    _CHOOSE_BTNS     = (By.CSS_SELECTOR, "table tbody tr td input[type='submit']")
 
-    # Column indices within each row (0-based)
-    _COL_DEPART_CITY  = 1
-    _COL_ARRIVE_CITY  = 2
-    _COL_DEPART_TIME  = 3
-    _COL_ARRIVE_TIME  = 4
-    _COL_AIRLINE      = 5
-    _COL_PRICE        = 6
+    # Verified column indices (0-based) from live DOM inspection
+    _COL_BUTTON      = 0   # <td><input type="submit"></td>
+    _COL_FLIGHT_NUM  = 1   # Flight number
+    _COL_AIRLINE     = 2   # Airline name
+    _COL_DEPART_TIME = 3   # Departure time
+    _COL_ARRIVE_TIME = 4   # Arrival time
+    _COL_PRICE       = 5   # Price (e.g. "$472.56")
+
+    _MIN_CELLS = 6  # Each valid row has exactly 6 <td> elements
 
     # ------------------------------------------------------------------
     # Constructor
@@ -66,9 +93,8 @@ class ReservePage(BasePage):
 
         Returns:
             List of dicts, each containing:
-            ``index``, ``airline``, ``price`` (float),
-            ``depart_city``, ``arrive_city``,
-            ``depart_time``, ``arrive_time``.
+            ``index``, ``flight_num``, ``airline``, ``price`` (float),
+            ``price_raw``, ``depart_time``, ``arrive_time``.
 
         Raises:
             AssertionError: If no flight rows are found.
@@ -80,24 +106,30 @@ class ReservePage(BasePage):
         for idx, row in enumerate(rows):
             try:
                 cells = row.find_elements(By.TAG_NAME, "td")
-                if len(cells) < 7:
-                    continue  # skip malformed rows
+                if len(cells) < self._MIN_CELLS:
+                    logger.debug(
+                        "Skipping row %d: only %d cells (expected %d)",
+                        idx, len(cells), self._MIN_CELLS
+                    )
+                    continue
 
+                # Extract price: "$472.56" → 472.56
                 price_raw = cells[self._COL_PRICE].text.strip()
-                # Extract numeric value: "$472.56" → 472.56
-                price_match = re.search(r"[\d,]+\.?\d*", price_raw.replace(",", ""))
+                price_match = re.search(r"[\d]+\.?\d*", price_raw.replace(",", ""))
                 price_float = float(price_match.group()) if price_match else 0.0
 
                 flights.append(
                     {
-                        "index": idx,
+                        "index":        idx,
+                        "flight_num":   cells[self._COL_FLIGHT_NUM].text.strip(),
                         "airline":      cells[self._COL_AIRLINE].text.strip(),
                         "price":        price_float,
                         "price_raw":    price_raw,
-                        "depart_city":  cells[self._COL_DEPART_CITY].text.strip(),
-                        "arrive_city":  cells[self._COL_ARRIVE_CITY].text.strip(),
                         "depart_time":  cells[self._COL_DEPART_TIME].text.strip(),
                         "arrive_time":  cells[self._COL_ARRIVE_TIME].text.strip(),
+                        # Keep legacy keys for backward compatibility
+                        "depart_city":  "",
+                        "arrive_city":  "",
                     }
                 )
             except Exception as exc:  # noqa: BLE001
@@ -130,14 +162,19 @@ class ReservePage(BasePage):
 
         chosen = flights[index]
         logger.info(
-            "Choosing flight index %d: %s @ %s",
+            "Choosing flight index %d: %s (Flight #%s) @ %s",
             index,
             chosen["airline"],
+            chosen["flight_num"],
             chosen["price_raw"],
         )
 
-        # Click the corresponding button — use nth-of-type to target specific row
+        # Click the corresponding submit button
         buttons = self.wait_for_all_presence(self._CHOOSE_BTNS)
+        if index >= len(buttons):
+            raise IndexError(
+                f"Button index {index} out of range (found {len(buttons)} buttons)."
+            )
         self._scroll_into_view(buttons[index])
         buttons[index].click()
 
@@ -164,7 +201,7 @@ class ReservePage(BasePage):
         return self.choose_flight_by_index(cheapest["index"])
 
     # ------------------------------------------------------------------
-    # Assertions helpers
+    # Assertion helpers
     # ------------------------------------------------------------------
 
     def get_heading(self) -> str:
