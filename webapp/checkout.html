@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyBook — Checkout</title>
+  <link rel="stylesheet" href="static/style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+
+  <!-- Navigation -->
+  <nav class="navbar px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <a href="index.html" class="text-white font-extrabold text-2xl tracking-tight">✈ SkyBook</a>
+      <span class="text-gray-300 text-sm">Secure Checkout &nbsp; 🔒</span>
+    </div>
+  </nav>
+
+  <!-- Progress bar -->
+  <div class="bg-white border-b border-gray-200 px-6 py-3">
+    <div class="max-w-5xl mx-auto flex items-center gap-3 text-sm">
+      <span class="text-gray-400 line-through">Search</span>
+      <span class="text-gray-300">›</span>
+      <span class="text-gray-400 line-through">Select Flight</span>
+      <span class="text-gray-300">›</span>
+      <span class="text-blue-600 font-semibold">Checkout</span>
+      <span class="text-gray-300">›</span>
+      <span class="text-gray-400">Confirmation</span>
+    </div>
+  </div>
+
+  <div class="max-w-5xl mx-auto px-6 py-10">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+      <!-- ── Left: passenger & payment form ── -->
+      <div class="lg:col-span-2">
+        <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <h2 class="font-bold text-xl text-gray-800 mb-5">Passenger Details</h2>
+          <div id="flight-info"></div>
+
+          <!-- Error banner -->
+          <div id="checkout-error" class="hidden bg-red-50 border border-red-300 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm"></div>
+
+          <form id="checkout-form" novalidate>
+
+            <!-- Passenger info -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label class="block text-sm font-semibold text-gray-600 mb-1" for="passenger-name">Full Name *</label>
+                <input type="text" id="passenger-name" name="passenger-name"
+                  class="form-input" placeholder="As on passport"
+                  data-testid="passenger-name" />
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-600 mb-1" for="passenger-email">Email Address *</label>
+                <input type="email" id="passenger-email" name="passenger-email"
+                  class="form-input" placeholder="you@example.com"
+                  data-testid="passenger-email" />
+              </div>
+            </div>
+
+            <!-- Payment section -->
+            <div class="mt-6 pt-5 border-t border-gray-100">
+              <h3 class="font-bold text-lg text-gray-800 mb-4">💳 Payment Information</h3>
+              <div class="mb-4">
+                <label class="block text-sm font-semibold text-gray-600 mb-1" for="cc-number">Card Number *</label>
+                <input type="text" id="cc-number" name="cc-number"
+                  class="form-input font-mono" placeholder="1234 5678 9012 3456"
+                  maxlength="19" autocomplete="cc-number"
+                  data-testid="cc-number" />
+              </div>
+              <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-600 mb-1" for="cc-expiry">Expiry (MM/YY) *</label>
+                  <input type="text" id="cc-expiry" name="cc-expiry"
+                    class="form-input font-mono" placeholder="MM/YY"
+                    maxlength="5" data-testid="cc-expiry" />
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-600 mb-1" for="cc-cvv">CVV *</label>
+                  <input type="text" id="cc-cvv" name="cc-cvv"
+                    class="form-input font-mono" placeholder="•••"
+                    maxlength="4" data-testid="cc-cvv" />
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" id="confirm-booking-btn"
+              class="btn-primary w-full text-center text-lg py-3 mt-4"
+              data-testid="confirm-booking-btn">
+              Confirm Booking →
+            </button>
+
+            <p class="text-gray-400 text-xs text-center mt-3">
+              🔒 Your payment info is encrypted and never stored on our servers.
+            </p>
+          </form>
+        </div>
+      </div>
+
+      <!-- ── Right: Fare summary ── -->
+      <div class="lg:col-span-1">
+        <div class="bg-white rounded-xl border border-gray-200 p-6 sticky top-24" id="fare-summary">
+          <h2 class="font-bold text-lg text-gray-800 mb-4">Fare Summary</h2>
+
+          <div class="text-sm text-gray-700 space-y-1 mb-5">
+            <p class="font-semibold text-gray-800" id="chk-airline"></p>
+            <p id="chk-route" class="text-blue-600 font-medium"></p>
+            <p class="text-gray-500">Flight: <span id="chk-flight"></span></p>
+            <p class="text-gray-500">Date: <span id="chk-date"></span></p>
+            <p class="text-gray-500">Dep: <span id="chk-dep-time"></span> · Arr: <span id="chk-arr-time"></span></p>
+            <p class="text-gray-500">Passengers: <span id="chk-pax"></span></p>
+          </div>
+
+          <div class="border-t border-gray-100 pt-4 text-sm">
+            <div class="fare-row"><span>Base fare</span><span id="chk-base"></span></div>
+            <div class="fare-row"><span>Taxes (15%)</span><span id="chk-taxes"></span></div>
+            <div class="fare-row"><span>Fuel surcharge</span><span id="chk-fuel"></span></div>
+            <div class="fare-row"><span>Booking fee</span><span id="chk-booking"></span></div>
+            <div class="fare-row total"><span>Total</span><span id="chk-total" data-testid="checkout-total"></span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-gray-900 text-gray-400 text-sm text-center py-6">
+    © 2025 SkyBook Inc. &nbsp;|&nbsp; Demo application for testing purposes.
+  </footer>
+
+  <script src="static/app.js"></script>
+</body>
+</html>

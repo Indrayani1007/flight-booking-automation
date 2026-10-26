@@ -1,145 +1,113 @@
 """
-ConfirmationPage — BlazeDemo post-purchase confirmation page.
+confirmation_page.py — SkyBook Booking Confirmation Page Object.
 
-Extracts booking ID, status, and total amount from the summary table.
+Maps to: http://localhost:8000/confirmation.html
 
-URL: https://blazedemo.com/confirmation.php
+Responsibilities:
+    - Read the booking reference number.
+    - Read the booking status badge.
+    - Read passenger name, airline, route, flight number, date, and total amount.
+    - Provide assertion-ready accessors for the E2E test.
 
-BlazeDemo confirmation table structure (verified via live DOM inspection):
-  <table class="table">
-    <tbody>
-      <tr><td>Id</td><td>2</td></tr>
-      <tr><td>Status</td><td>PendingCapture</td></tr>
-      <tr><td>Amount</td><td>$ 433.79</td></tr>
-      <tr><td>Tax</td><td>$ 54.22</td></tr>
-      <tr><td>Total Amount</td><td>$ 487.01</td></tr>
-      <tr><td>Airline</td><td>United Airlines</td></tr>
-      <tr><td>Confirmation Code</td><td>GHU778</td></tr>
-    </tbody>
-  </table>
+Locator Strategy:
+    Uses ``data-testid`` attributes for all fields. This pattern is robust
+    against UI redesigns because test IDs are semantically meaningful and
+    explicitly maintained for automation, unlike CSS class names which often
+    change for visual reasons.
 """
 
 from __future__ import annotations
+
+import logging
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from pages.base_page import BasePage
-from utilities.logger import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ConfirmationPage(BasePage):
     """
-    Page Object for the booking confirmation page.
-
-    Provides typed accessors for each data row in the confirmation table.
-    Uses presence-based waits (not visibility) since the table cells are
-    technically visible but the Selenium visibility check can be flaky on
-    table elements in older Bootstrap layouts.
+    Page Object representing the SkyBook booking confirmation page.
     """
 
-    # ------------------------------------------------------------------
-    # Locators — XPath targeting specific table rows by their label cell
-    # Verified against live BlazeDemo confirmation page DOM.
-    # ------------------------------------------------------------------
+    # ── Locators ──────────────────────────────────────────────────────────────
 
-    # Booking ID / confirmation number
-    _CONFIRMATION_ID  = (By.XPATH, "//td[normalize-space(text())='Id']/following-sibling::td[1]")
+    _BOOKING_REF     = (By.CSS_SELECTOR, "[data-testid='booking-reference']")
+    _BOOKING_STATUS  = (By.CSS_SELECTOR, "[data-testid='booking-status']")
+    _PASSENGER_NAME  = (By.CSS_SELECTOR, "[data-testid='passenger-name']")
+    _AIRLINE_NAME    = (By.CSS_SELECTOR, "[data-testid='airline-name']")
+    _ROUTE           = (By.CSS_SELECTOR, "[data-testid='route']")
+    _FLIGHT_NUMBER   = (By.CSS_SELECTOR, "[data-testid='flight-number']")
+    _TRAVEL_DATE     = (By.CSS_SELECTOR, "[data-testid='travel-date']")
+    _PASSENGER_COUNT = (By.CSS_SELECTOR, "[data-testid='passenger-count']")
+    _TOTAL_AMOUNT    = (By.CSS_SELECTOR, "[data-testid='total-amount']")
+    _NEW_SEARCH_BTN  = (By.CSS_SELECTOR, "a[href='index.html']")
 
-    # Booking status (e.g. "PendingCapture")
-    _STATUS           = (By.XPATH, "//td[normalize-space(text())='Status']/following-sibling::td[1]")
+    # ── Page readiness ────────────────────────────────────────────────────────
 
-    # Amount (first amount row)
-    _AMOUNT           = (By.XPATH, "//td[normalize-space(text())='Amount']/following-sibling::td[1]")
+    def wait_for_confirmation(self) -> "ConfirmationPage":
+        """
+        Wait until the booking reference element is populated with a value.
 
-    # Confirmation code (alternative unique identifier)
-    _CONFIRMATION_CODE = (By.XPATH, "//td[normalize-space(text())='Confirmation Code']/following-sibling::td[1]")
+        The confirmation page is rendered by JavaScript reading from sessionStorage,
+        so we must wait for the DOM element to contain actual data before asserting.
+        """
+        # Wait for the booking reference to be visible and non-empty
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.support.ui import WebDriverWait
 
-    # Page heading — BlazeDemo uses an h1 on the confirmation page
-    _PAGE_HEADING     = (By.CSS_SELECTOR, "h1, .hero-unit h2, div.container h2")
+        WebDriverWait(self.driver, 15).until(
+            lambda d: d.find_element(*self._BOOKING_REF).text.strip() not in ("", "—")
+        )
+        logger.info("ConfirmationPage loaded — reference populated")
+        return self
 
-    # Table anchor — wait for this first to ensure page is loaded
-    _TABLE_ANCHOR     = (By.CSS_SELECTOR, "table.table")
-
-    # ------------------------------------------------------------------
-    # Constructor
-    # ------------------------------------------------------------------
-
-    def __init__(self, driver: WebDriver) -> None:
-        super().__init__(driver)
-        # Wait for the table to appear before any accessor is called
-        self._wait_for_table()
-
-    def _wait_for_table(self) -> None:
-        """Block until the confirmation table is present in the DOM."""
-        try:
-            self.wait_for_presence(self._TABLE_ANCHOR)
-            logger.debug("Confirmation table detected in DOM")
-        except Exception as exc:
-            logger.warning("Confirmation table wait failed: %s", exc)
-
-    # ------------------------------------------------------------------
-    # Internal helper — use presence, not visibility, for table cells
-    # ------------------------------------------------------------------
-
-    def _get_cell_text(self, locator) -> str:
-        """Return text of a table cell located by XPath, using presence wait."""
-        element = self.wait_for_presence(locator)
-        return element.text.strip()
-
-    # ------------------------------------------------------------------
-    # Accessors
-    # ------------------------------------------------------------------
+    # ── Read-only accessors ───────────────────────────────────────────────────
 
     def get_confirmation_id(self) -> str:
         """
-        Return the alphanumeric booking ID from the confirmation table.
+        Return the booking reference number (e.g., 'SKY-A3BK9R').
 
-        Returns:
-            Non-empty string (e.g. ``"2"`` or ``"GHU778"``).
+        This is the primary assertion point for the E2E test — a non-empty
+        reference confirms the booking flow completed successfully end-to-end.
         """
-        conf_id = self._get_cell_text(self._CONFIRMATION_ID)
-        logger.info("Confirmation ID: %s", conf_id)
-        return conf_id
+        self.wait_for_confirmation()
+        ref = self.get_text(self._BOOKING_REF)
+        logger.info("Booking reference: %s", ref)
+        return ref
 
     def get_booking_status(self) -> str:
-        """
-        Return the booking status (e.g. ``"PendingCapture"``).
-        """
-        status = self._get_cell_text(self._STATUS)
-        logger.info("Booking status: %s", status)
-        return status
+        """Return the booking status badge text (expected: 'CONFIRMED')."""
+        return self.get_text(self._BOOKING_STATUS)
+
+    def get_passenger_name(self) -> str:
+        """Return the passenger name as shown on the confirmation."""
+        return self.get_text(self._PASSENGER_NAME)
+
+    def get_airline_name(self) -> str:
+        """Return the airline name."""
+        return self.get_text(self._AIRLINE_NAME)
+
+    def get_route(self) -> str:
+        """Return the route string (e.g., 'Philadelphia → Buenos Aires')."""
+        return self.get_text(self._ROUTE)
 
     def get_total_amount(self) -> str:
         """
-        Return the raw amount string (e.g. ``"$ 433.79"``).
-        """
-        amount = self._get_cell_text(self._AMOUNT)
-        logger.info("Total amount: %s", amount)
-        return amount
+        Return the total charged amount as a string (e.g., '$614.35').
 
-    def get_confirmation_code(self) -> str:
-        """Return the airline confirmation code (e.g. ``"GHU778"``)."""
-        code = self._get_cell_text(self._CONFIRMATION_CODE)
-        logger.info("Confirmation code: %s", code)
-        return code
-
-    def get_heading(self) -> str:
-        """Return the first heading text on the confirmation page."""
-        try:
-            return self._get_cell_text(self._PAGE_HEADING)
-        except Exception:
-            # Fallback: return page title
-            return self.driver.title
-
-    def is_booking_confirmed(self) -> bool:
+        The test should assert that this value matches the amount displayed
+        on the checkout page, validating end-to-end price consistency.
         """
-        Return True if a confirmation ID is present and non-empty.
+        return self.get_text(self._TOTAL_AMOUNT)
+
+    def is_confirmed(self) -> bool:
         """
-        try:
-            conf_id = self.get_confirmation_id()
-            return bool(conf_id)
-        except Exception:  # noqa: BLE001
-            return False
+        Return True if the booking status is 'CONFIRMED'.
+
+        Convenience method for the most common assertion in the E2E test.
+        """
+        return self.get_booking_status().upper() == "CONFIRMED"

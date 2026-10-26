@@ -1,116 +1,167 @@
 """
-test_flight_search.py — Flight search and route selection tests.
+test_flight_search.py — Search Functionality & Route Validation Tests.
 
-Covers:
-- Parameterised route matrix: validates that each route returns ≥1 flight
-  with a non-empty airline name and a valid numeric price.
+Test Coverage:
+    1. Smoke test: page loads with correct title.
+    2. UI validation: dropdown population check.
+    3. Default search: clicking search with pre-selected defaults returns results.
+    4. Parameterized route matrix: multiple city pairs all return ≥1 results.
+    5. Same-city validation: selecting identical dep/dest shows error.
+
+These tests validate the top of the booking funnel (search → results).
 """
 
 from __future__ import annotations
 
 import pytest
+import allure
 
-from config.config import cfg
 from pages.flight_finder_page import FlightFinderPage
 from pages.reserve_page import ReservePage
-from test_data.booking_payloads import ROUTE_MATRIX
-from utilities.logger import get_logger
-
-logger = get_logger(__name__)
+from test_data.booking_payloads import ROUTE_MATRIX, TOMORROW
 
 
+@allure.feature("Flight Search")
 class TestFlightSearch:
-    """Test class for flight search functionality."""
+    """Tests for the SkyBook flight search and results pages."""
 
-    @pytest.mark.parametrize(
-        "departure, destination",
-        ROUTE_MATRIX,
-        ids=[f"{dep}->{dst}" for dep, dst in ROUTE_MATRIX],
-    )
+    @allure.story("Page Load")
+    @allure.title("Home page loads with correct title")
     @pytest.mark.smoke
+    def test_home_page_title(self, driver) -> None:
+        """
+        Smoke test: navigate to the home page and verify the page title.
+
+        This is the simplest possible test — it verifies the application
+        is running and reachable before executing more complex scenarios.
+        """
+        with allure.step("Open SkyBook home page"):
+            page = FlightFinderPage(driver)
+            page.open()
+
+        with allure.step("Verify page title contains 'SkyBook'"):
+            title = driver.title
+            assert "SkyBook" in title, (
+                f"Expected 'SkyBook' in page title, but got: '{title}'. "
+                "The web server may not be running or base_url is misconfigured."
+            )
+
+    @allure.story("Search Form")
+    @allure.title("Search dropdowns are populated with city options")
+    @pytest.mark.smoke
+    def test_search_dropdowns_populated(self, driver) -> None:
+        """
+        UI validation: verify the departure and destination dropdowns contain options.
+
+        JavaScript populates the dropdowns dynamically from the FLIGHTS dataset.
+        This test confirms the JS has run correctly and the DOM has options.
+        """
+        with allure.step("Open home page"):
+            page = FlightFinderPage(driver)
+            page.open()
+
+        with allure.step("Count departure dropdown options"):
+            from selenium.webdriver.common.by import By
+            dep_options = driver.find_elements(By.CSS_SELECTOR, "#departure option")
+            assert len(dep_options) > 1, (
+                "Departure dropdown has only 1 option (the placeholder). "
+                "JavaScript may have failed to populate it."
+            )
+
+        with allure.step("Count destination dropdown options"):
+            dest_options = driver.find_elements(By.CSS_SELECTOR, "#destination option")
+            assert len(dest_options) > 1, (
+                "Destination dropdown has only 1 option (the placeholder). "
+                "JavaScript may have failed to populate it."
+            )
+
+    @allure.story("Default Search")
+    @allure.title("Search with default selections returns flight results")
+    @pytest.mark.regression
+    def test_default_search_returns_results(self, driver) -> None:
+        """
+        Default-state test: search with the pre-selected defaults (Philadelphia → Buenos Aires).
+
+        The dropdowns auto-select these defaults on page load. This verifies
+        the application works correctly without any user interaction on the form.
+        """
+        with allure.step("Open home page with default city selections"):
+            page = FlightFinderPage(driver)
+            page.open()
+
+        with allure.step("Submit search with default values"):
+            page.click_search()
+
+        with allure.step("Wait for results to load after spinner"):
+            reserve = ReservePage(driver)
+            count = reserve.flight_count()
+
+        with allure.step("Assert at least 1 result is displayed"):
+            assert count >= 1, (
+                f"Expected ≥1 flights with default route (Philadelphia → Buenos Aires), "
+                f"but found {count}. Check the flight dataset in app.js."
+            )
+
+    @allure.story("Same-City Validation")
+    @allure.title("Same city for departure and destination shows validation error")
+    @pytest.mark.negative
+    def test_same_city_shows_error(self, driver) -> None:
+        """
+        Negative test: selecting the same city for departure and destination
+        should trigger the application's client-side validation error.
+        """
+        with allure.step("Open home page"):
+            page = FlightFinderPage(driver)
+            page.open()
+
+        with allure.step("Select same city for departure and destination"):
+            page.select_departure("New York")
+            page.select_destination("New York")
+
+        with allure.step("Submit search"):
+            page.click_search()
+
+        with allure.step("Assert validation error is displayed"):
+            assert page.is_error_visible(), (
+                "Expected a validation error when selecting the same city for "
+                "departure and destination, but no error was shown."
+            )
+            error_text = page.get_error_message()
+            assert len(error_text) > 0, "Validation error banner is empty."
+
+    @allure.story("Route Matrix")
+    @pytest.mark.parametrize("departure,destination,min_flights", ROUTE_MATRIX)
     @pytest.mark.regression
     def test_parameterized_route_matrix(
-        self,
-        driver,
-        departure: str,
-        destination: str,
+        self, driver, departure: str, destination: str, min_flights: int
     ) -> None:
         """
-        Verify that searching for each route in the ROUTE_MATRIX yields at least
-        one flight result with a valid airline name and a positive numeric price.
+        Parameterized test: verify that multiple city-pair routes all return results.
 
-        Steps:
-        1. Navigate to BlazeDemo home.
-        2. Select the given departure and destination.
-        3. Click "Find Flights".
-        4. Assert ≥1 flight is listed.
-        5. Assert every flight has a non-empty airline and price > 0.
+        pytest.mark.parametrize runs this test once for each row in ROUTE_MATRIX,
+        generating individual pass/fail entries per route in the report.
+        This is an efficient way to achieve broad route coverage.
 
         Args:
-            driver:      Injected WebDriver fixture (function-scoped).
-            departure:   Departure city string from the parametrize list.
-            destination: Destination city string from the parametrize list.
+            departure:   Departure city name.
+            destination: Destination city name.
+            min_flights: Minimum expected flight count for this route.
         """
-        logger.info("=" * 60)
-        logger.info("TEST: route %s → %s", departure, destination)
+        allure.dynamic.title(f"Route: {departure} → {destination}")
 
-        # Step 1 — Open home page
-        finder = FlightFinderPage(driver)
-        finder.open()
+        with allure.step(f"Open home page and select route {departure} → {destination}"):
+            page = FlightFinderPage(driver)
+            page.open()
+            page.select_route(departure, destination)
+            page.set_travel_date(TOMORROW)
 
-        # Step 2–3 — Select route and search
-        finder.select_route(departure, destination)
-        finder.click_find_flights()
+        with allure.step("Submit search"):
+            page.click_search()
 
-        # Step 4 — Parse results
-        reserve = ReservePage(driver)
-        flights = reserve.get_available_flights()
-
-        assert len(flights) >= 1, (
-            f"Expected at least 1 flight for route {departure}→{destination}, "
-            f"got {len(flights)}"
-        )
-        logger.info("Found %d flight(s) for %s → %s", len(flights), departure, destination)
-
-        # Step 5 — Validate each flight entry
-        for flight in flights:
-            assert flight["airline"], (
-                f"Flight at index {flight['index']} has an empty airline name."
+        with allure.step(f"Verify ≥{min_flights} result(s) returned"):
+            reserve = ReservePage(driver)
+            count   = reserve.flight_count()
+            assert count >= min_flights, (
+                f"Route {departure} → {destination}: expected ≥{min_flights} flight(s), "
+                f"but got {count}. Verify the FLIGHTS dataset in app.js includes this route."
             )
-            assert flight["price"] > 0, (
-                f"Flight at index {flight['index']} has non-positive price: {flight['price_raw']}"
-            )
-            logger.info(
-                "  ✓ %s | %s | %s → %s",
-                flight["airline"],
-                flight["price_raw"],
-                flight["depart_city"],
-                flight["arrive_city"],
-            )
-
-        logger.info("PASSED: route %s → %s", departure, destination)
-
-    @pytest.mark.smoke
-    def test_home_page_loads(self, driver) -> None:
-        """
-        Smoke test: verify BlazeDemo home page loads successfully and
-        the departure/destination dropdowns are present.
-        """
-        finder = FlightFinderPage(driver)
-        finder.open()
-
-        title = driver.title
-        assert "BlazeDemo" in title or title != "", (
-            f"Unexpected page title: '{title}'"
-        )
-
-        # Verify dropdowns are visible
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support import expected_conditions as EC
-        from selenium.webdriver.support.ui import WebDriverWait
-
-        wait = WebDriverWait(driver, cfg.explicit_wait)
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "select[name='fromPort']")))
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "select[name='toPort']")))
-
-        logger.info("Home page loaded. Title: '%s'", title)

@@ -1,11 +1,28 @@
 """
-conftest.py — Pytest fixtures and hooks for BlazeDemo regression suite.
+conftest.py — Pytest fixtures and hooks for the SkyBook regression suite.
 
-Provides:
-- CLI option hooks: --browser (chrome/firefox/edge) and --headless.
-- ``driver`` fixture (function-scoped): creates and tears down WebDriver.
-- ``pytest_runtest_makereport``: captures screenshots on test failure and
-  attaches them to the pytest-html report.
+Academic Purpose:
+    This module is the backbone of the pytest infrastructure.  It provides:
+
+    1. Cross-browser CLI hooks: --browser and --headless options so the
+       suite can be executed against Chrome, Firefox, or Edge without any
+       code changes — only a command-line flag changes.
+
+    2. A function-scoped ``driver`` fixture that:
+       - Uses ``webdriver-manager`` for zero-configuration driver binary management.
+       - Guarantees ``driver.quit()`` is called even if a test fails.
+
+    3. A ``pytest_runtest_makereport`` hook that:
+       - On failure, captures a full-viewport screenshot.
+       - Attaches the screenshot to BOTH the pytest-html report AND Allure.
+
+    4. Allure integration: failure screenshots and step annotations are
+       attached directly to the Allure report for visual debugging.
+
+Design Decision — Function Scope:
+    The driver fixture uses ``scope="function"`` so each test receives a
+    completely fresh browser session, ensuring test isolation: a failure
+    or state change in one test cannot pollute the next.
 """
 
 from __future__ import annotations
@@ -34,70 +51,84 @@ from utilities.logger import get_logger
 logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
 # CLI option registration
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    """Register custom CLI arguments for the test suite."""
+    """
+    Register custom command-line options.
+
+    Options:
+        --browser   chrome | firefox | edge  (default: chrome)
+        --headless  run without a visible browser window (CI-friendly)
+
+    Example:
+        pytest --browser=firefox --headless
+    """
     parser.addoption(
         "--browser",
         action="store",
         default="chrome",
         choices=["chrome", "firefox", "edge"],
-        help="Browser to run tests against (default: chrome).",
+        help="Target browser for test execution (default: chrome).",
     )
     parser.addoption(
         "--headless",
         action="store_true",
         default=False,
-        help="Run browser in headless mode (recommended for CI).",
+        help="Run the browser in headless (no GUI) mode. Recommended for CI.",
     )
 
 
-# ---------------------------------------------------------------------------
-# Driver factory helpers
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Browser driver factory functions
+# ──────────────────────────────────────────────────────────────────────────────
 
 def _build_chrome_driver(headless: bool) -> WebDriver:
-    """Instantiate a Chrome WebDriver with optional headless mode."""
+    """
+    Instantiate a Chrome WebDriver via webdriver-manager.
+
+    ``--headless=new`` uses Chrome's modern Blink-based headless mode
+    (Chrome 112+) which behaves much more like a real browser than the
+    legacy ``--headless`` flag, reducing false-positive test failures.
+    """
     options = ChromeOptions()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-extensions")
-    options.add_argument("--disable-infobars")
     if headless:
         options.add_argument("--headless=new")
+
     service = ChromeService(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    return driver
+    return webdriver.Chrome(service=service, options=options)
 
 
 def _build_firefox_driver(headless: bool) -> WebDriver:
-    """Instantiate a Firefox (Gecko) WebDriver with optional headless mode."""
+    """Instantiate a Firefox (GeckoDriver) WebDriver via webdriver-manager."""
     options = FirefoxOptions()
     options.add_argument("--width=1920")
     options.add_argument("--height=1080")
     if headless:
         options.add_argument("--headless")
+
     service = FirefoxService(GeckoDriverManager().install())
-    driver = webdriver.Firefox(service=service, options=options)
-    return driver
+    return webdriver.Firefox(service=service, options=options)
 
 
 def _build_edge_driver(headless: bool) -> WebDriver:
-    """Instantiate an Edge (Chromium) WebDriver with optional headless mode."""
+    """Instantiate a Microsoft Edge WebDriver via webdriver-manager."""
     options = EdgeOptions()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     if headless:
         options.add_argument("--headless=new")
+
     service = EdgeService(EdgeChromiumDriverManager().install())
-    driver = webdriver.Edge(service=service, options=options)
-    return driver
+    return webdriver.Edge(service=service, options=options)
 
 
 _DRIVER_BUILDERS = {
@@ -107,97 +138,107 @@ _DRIVER_BUILDERS = {
 }
 
 
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
 # Driver fixture
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="function")
 def driver(request: pytest.FixtureRequest) -> Generator[WebDriver, None, None]:
     """
-    Function-scoped WebDriver fixture.
+    Function-scoped WebDriver fixture — provides a fresh browser per test.
 
-    Reads ``--browser`` and ``--headless`` from CLI options, creates the
-    appropriate driver, sets page-load timeout, and ensures ``driver.quit()``
-    is called in teardown regardless of test outcome.
-
-    Yields:
-        Active :class:`WebDriver` instance.
+    Lifecycle:
+        SETUP   → reads CLI options, creates the browser driver.
+        YIELD   → hands the driver to the test function.
+        TEARDOWN → calls driver.quit() regardless of test pass/fail.
     """
-    browser: str = request.config.getoption("--browser", default="chrome")
+    browser: str  = request.config.getoption("--browser",  default="chrome")
     headless: bool = request.config.getoption("--headless", default=False)
 
-    logger.info("Starting %s driver (headless=%s)", browser, headless)
+    logger.info("Initialising %s WebDriver (headless=%s)", browser, headless)
 
     builder = _DRIVER_BUILDERS.get(browser)
     if builder is None:
         raise ValueError(
-            f"Unsupported browser '{browser}'. Choose from: {list(_DRIVER_BUILDERS)}"
+            f"Unsupported browser '{browser}'. Valid options: {list(_DRIVER_BUILDERS.keys())}"
         )
 
     web_driver = builder(headless)
     web_driver.set_page_load_timeout(cfg.page_load_timeout)
     web_driver.maximize_window()
 
+    # Yield the driver to the test — execution pauses here until the test ends
     yield web_driver
 
-    logger.info("Quitting %s driver", browser)
+    logger.info("Tearing down %s WebDriver", browser)
     web_driver.quit()
 
 
-# ---------------------------------------------------------------------------
-# Screenshot on failure hook
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Failure screenshot hook — attaches to both pytest-html AND Allure
+# ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     """
-    pytest hook that fires after each test phase (setup / call / teardown).
+    Capture a screenshot on test failure and attach to pytest-html and Allure.
 
-    When the *call* phase fails, a timestamped screenshot is saved to
-    ``reports/screenshots/`` and attached to the pytest-html report.
+    tryfirst=True + hookwrapper=True: ensures this hook runs before other
+    hooks and can inspect the completed test outcome.
     """
-    outcome = yield  # let the test run
-    report = outcome.get_result()
+    outcome = yield
+    report  = outcome.get_result()
 
-    # Only act on failures during the actual test call (not setup/teardown)
+    # Only capture screenshots for test-body failures (not setup/teardown)
     if report.when == "call" and report.failed:
         web_driver: WebDriver | None = item.funcargs.get("driver")
         if web_driver is None:
             return
 
-        # Sanitise the test name to create a valid filename
-        safe_name = re.sub(r"[^\w\-]", "_", item.name)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"FAIL_{safe_name}_{timestamp}"
+        # Build a filesystem-safe filename
+        safe_name        = re.sub(r"[^\w\-]", "_", item.name)
+        timestamp        = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename         = f"FAIL_{safe_name}_{timestamp}"
+        screenshot_path  = cfg.screenshot_dir / f"{filename}.png"
 
-        screenshot_path: Path = cfg.screenshot_dir / f"{filename}.png"
         try:
             web_driver.save_screenshot(str(screenshot_path))
-            logger.error("Failure screenshot saved: %s", screenshot_path)
+            logger.error("Test FAILED — screenshot: %s", screenshot_path)
 
-            # Attach to pytest-html report if the plugin is available
-            extras_attr = getattr(report, "extras", None)
-            if extras_attr is None:
+            # ── Attach to Allure report (industry standard) ──
+            try:
+                import allure
+                allure.attach(
+                    screenshot_path.read_bytes(),
+                    name=f"Failure Screenshot — {item.name}",
+                    attachment_type=allure.attachment_type.PNG,
+                )
+                logger.info("Screenshot attached to Allure report")
+            except ImportError:
+                pass  # allure-pytest is optional
+
+            # ── Attach to pytest-html report (academic fallback) ──
+            if not hasattr(report, "extras"):
                 report.extras = []
             try:
                 from pytest_html import extras as html_extras  # type: ignore
-
+                report.extras.append(html_extras.image(str(screenshot_path)))
                 report.extras.append(
-                    html_extras.image(str(screenshot_path))
-                )
-                report.extras.append(
-                    html_extras.text(f"Screenshot: {screenshot_path}", name="Screenshot Path")
+                    html_extras.text(
+                        f"Screenshot: {screenshot_path}", name="Failure Screenshot Path"
+                    )
                 )
             except ImportError:
-                pass  # pytest-html not installed; skip attachment
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not capture failure screenshot: %s", exc)
+                pass
+
+        except Exception as exc:
+            logger.warning("Failed to capture failure screenshot: %s", exc)
 
 
-# ---------------------------------------------------------------------------
-# HTML report title customisation
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# HTML report customisation
+# ──────────────────────────────────────────────────────────────────────────────
 
 def pytest_html_report_title(report) -> None:
-    """Set a custom title for the HTML report."""
-    report.title = "BlazeDemo Regression Suite — Test Report"
+    """Set a professional title for the generated HTML test report."""
+    report.title = "SkyBook — Cross-Browser Regression Suite · Test Report"

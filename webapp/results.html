@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyBook — Flight Results</title>
+  <link rel="stylesheet" href="static/style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+
+  <!-- Navigation -->
+  <nav class="navbar px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <a href="index.html" class="text-white font-extrabold text-2xl tracking-tight">✈ SkyBook</a>
+      <a href="index.html" class="text-blue-300 text-sm hover:text-white">← Modify Search</a>
+    </div>
+  </nav>
+
+  <!-- Page header -->
+  <div class="bg-white border-b border-gray-200 px-6 py-5">
+    <div class="max-w-4xl mx-auto">
+      <h1 class="text-2xl font-bold text-gray-800">Available Flights</h1>
+      <p id="search-summary" class="text-gray-500 text-sm mt-1" data-testid="search-summary">Loading…</p>
+    </div>
+  </div>
+
+  <div class="max-w-4xl mx-auto px-6 py-8">
+
+    <!-- Results count badge -->
+    <p id="results-count" class="text-sm font-semibold text-blue-600 mb-4" data-testid="results-count"></p>
+
+    <!-- ── 2-second async loading spinner ── -->
+    <!-- This spinner is visible for 2 seconds while JavaScript "fetches" results.
+         Selenium tests MUST use WebDriverWait to wait for it to disappear before
+         interacting with the flight cards. -->
+    <div id="loading-spinner" class="flex flex-col items-center justify-center py-24 hidden" data-testid="loading-spinner">
+      <div class="spinner mb-6"></div>
+      <p class="text-gray-500 font-medium text-lg">Searching best fares for you…</p>
+      <p class="text-gray-400 text-sm mt-1">This usually takes a moment</p>
+    </div>
+
+    <!-- ── Flight results ── -->
+    <div id="results-container" class="hidden" data-testid="results-container">
+      <!-- Populated dynamically by app.js -->
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-gray-900 text-gray-400 text-sm text-center py-6">
+    © 2025 SkyBook Inc. &nbsp;|&nbsp; Demo application for testing purposes.
+  </footer>
+
+  <script src="static/app.js"></script>
+</body>
+</html>

@@ -1,177 +1,131 @@
 """
-PurchasePage — BlazeDemo passenger and billing checkout form.
+purchase_page.py — SkyBook Checkout Page Object.
 
-Populates all passenger and credit-card fields, then submits the order.
+Maps to: http://localhost:8000/checkout.html
 
-URL: https://blazedemo.com/purchase.php
+Responsibilities:
+    - Populate passenger details (name, email).
+    - Populate payment information (card number, expiry, CVV).
+    - Read the fare summary panel values for assertion.
+    - Submit the checkout form.
+
+Design Pattern — Field Map:
+    Form fields are populated via a Python dict (the "field map" pattern).
+    This makes the test data layer (booking_payloads.py) the single source
+    of truth for passenger data, and allows the same form-filling logic to
+    handle any combination of fields without conditional branching.
 """
 
 from __future__ import annotations
+
+import logging
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from pages.base_page import BasePage
-from utilities.logger import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PurchasePage(BasePage):
     """
-    Page Object for the passenger & billing checkout page.
-
-    All locators use the ``id`` attribute from the BlazeDemo form so they
-    are insensitive to DOM restructuring outside those elements.
+    Page Object representing the SkyBook checkout/purchase page.
     """
 
-    PAGE_URL: str = "/purchase.php"
+    # ── Locators ──────────────────────────────────────────────────────────────
 
-    # ------------------------------------------------------------------
-    # Locators — text inputs
-    # ------------------------------------------------------------------
+    _PASSENGER_NAME  = (By.CSS_SELECTOR, "[data-testid='passenger-name']")
+    _PASSENGER_EMAIL = (By.CSS_SELECTOR, "[data-testid='passenger-email']")
+    _CC_NUMBER       = (By.CSS_SELECTOR, "[data-testid='cc-number']")
+    _CC_EXPIRY       = (By.CSS_SELECTOR, "[data-testid='cc-expiry']")
+    _CC_CVV          = (By.CSS_SELECTOR, "[data-testid='cc-cvv']")
+    _CONFIRM_BTN     = (By.CSS_SELECTOR, "[data-testid='confirm-booking-btn']")
+    _ERROR_BANNER    = (By.ID, "checkout-error")
+    _CHECKOUT_TOTAL  = (By.CSS_SELECTOR, "[data-testid='checkout-total']")
 
-    _INPUT_NAME     = (By.ID, "inputName")
-    _ADDRESS        = (By.ID, "address")
-    _CITY           = (By.ID, "city")
-    _STATE          = (By.ID, "state")
-    _ZIP_CODE       = (By.ID, "zipCode")
-    _CARD_TYPE      = (By.ID, "cardType")        # <select>
-    _CC_NUMBER      = (By.ID, "creditCardNumber")
-    _CC_MONTH       = (By.ID, "creditCardMonth")
-    _CC_YEAR        = (By.ID, "creditCardYear")
-    _NAME_ON_CARD   = (By.ID, "nameOnCard")
-    _REMEMBER_ME    = (By.ID, "rememberMe")      # checkbox
+    # Expose locators for negative tests that need to call clear_field()
+    name_locator      = _PASSENGER_NAME
+    cc_number_locator = _CC_NUMBER
 
-    _PURCHASE_BTN   = (By.CSS_SELECTOR, "input[type='submit']")
+    # ── Page readiness ────────────────────────────────────────────────────────
 
-    # Page heading to confirm correct page
-    _PAGE_HEADING   = (By.CSS_SELECTOR, "h2")
+    def wait_for_page_load(self) -> "PurchasePage":
+        """
+        Wait until the checkout form and fare summary are rendered.
 
-    # ------------------------------------------------------------------
-    # Constructor
-    # ------------------------------------------------------------------
+        The fare summary is populated by JavaScript after the page loads
+        (reading from sessionStorage), so we wait for the confirm button
+        to appear, which signals the JS has run.
+        """
+        self.wait_for_visible(self._CONFIRM_BTN)
+        logger.info("PurchasePage loaded and ready")
+        return self
 
-    def __init__(self, driver: WebDriver) -> None:
-        super().__init__(driver)
-
-    # ------------------------------------------------------------------
-    # Actions
-    # ------------------------------------------------------------------
+    # ── Form population ───────────────────────────────────────────────────────
 
     def populate_passenger_form(self, data: dict) -> "PurchasePage":
         """
-        Populate all passenger and billing fields from a data dictionary.
+        Fill all form fields from the provided data dictionary.
 
-        Expected keys (all strings unless noted):
-        - ``name``           — Passenger full name
-        - ``address``        — Street address
-        - ``city``           — City
-        - ``state``          — State
-        - ``zip_code``       — Postal / ZIP code
-        - ``card_type``      — Card type visible text (e.g. "Visa")
-        - ``credit_card_number`` — Card number (digits only)
-        - ``credit_card_month``  — Expiry month (MM)
-        - ``credit_card_year``   — Expiry year (YYYY)
-        - ``name_on_card``   — Name as printed on card
-        - ``remember_me``    — (bool, optional) Check the "Remember me" checkbox
-
-        Unrecognised keys are silently ignored.
+        Field map keys (all optional — missing keys are skipped):
+            "name"    → passenger full name
+            "email"   → passenger email address
+            "cc_num"  → credit card number (digits; auto-formatted)
+            "cc_exp"  → expiry in MM/YY format
+            "cc_cvv"  → 3 or 4-digit CVV
 
         Args:
-            data: Dictionary of passenger and billing details.
-
-        Returns:
-            Self for method chaining.
+            data: Dict of field values from test_data/booking_payloads.py.
         """
-        logger.info("Populating passenger form for: %s", data.get("name", "<unknown>"))
+        self.wait_for_page_load()
 
         field_map = {
-            "name":                (self._fill_if_provided, self._INPUT_NAME),
-            "address":             (self._fill_if_provided, self._ADDRESS),
-            "city":                (self._fill_if_provided, self._CITY),
-            "state":               (self._fill_if_provided, self._STATE),
-            "zip_code":            (self._fill_if_provided, self._ZIP_CODE),
-            "credit_card_number":  (self._fill_if_provided, self._CC_NUMBER),
-            "credit_card_month":   (self._fill_if_provided, self._CC_MONTH),
-            "credit_card_year":    (self._fill_if_provided, self._CC_YEAR),
-            "name_on_card":        (self._fill_if_provided, self._NAME_ON_CARD),
+            "name":   self._PASSENGER_NAME,
+            "email":  self._PASSENGER_EMAIL,
+            "cc_num": self._CC_NUMBER,
+            "cc_exp": self._CC_EXPIRY,
+            "cc_cvv": self._CC_CVV,
         }
 
-        for key, (action, locator) in field_map.items():
+        for key, locator in field_map.items():
             value = data.get(key)
-            if value is not None:
-                action(locator, str(value))
+            if value is None:
+                continue  # Skip optional fields not present in the payload
+            self.type_text(locator, str(value))
+            logger.debug("  Filled field '%s' = '%s'", key, value)
 
-        # Card type is a select element
-        if card_type := data.get("card_type"):
-            self.select_by_text(self._CARD_TYPE, card_type)
-
-        # Remember Me checkbox
-        if data.get("remember_me"):
-            self._check_checkbox(self._REMEMBER_ME)
-
+        logger.info("Passenger form populated with %d field(s)", len(data))
         return self
-
-    def _fill_if_provided(self, locator, value: str) -> None:
-        """Helper: only call fill() when value is a non-empty string."""
-        if value:
-            self.fill(locator, value)
-
-    def _check_checkbox(self, locator) -> None:
-        """Ensure a checkbox is checked (idempotent)."""
-        element = self.wait_for_presence(locator)
-        if not element.is_selected():
-            element.click()
-
-    def clear_field(self, locator) -> None:
-        """
-        Explicitly clear a form field — used in negative test scenarios.
-
-        Args:
-            locator: ``(By.*, selector)`` tuple of the field to clear.
-        """
-        element = self.wait_for_visibility(locator)
-        element.clear()
 
     def submit_order(self) -> None:
         """
-        Click the "Purchase Flight" submit button.
+        Click 'Confirm Booking' to submit the checkout form.
 
-        After clicking, the browser navigates to the confirmation page;
-        callers should instantiate :class:`~pages.confirmation_page.ConfirmationPage`.
+        After a successful submission, the browser navigates to confirmation.html.
         """
-        logger.info("Submitting purchase order")
-        self.click(self._PURCHASE_BTN)
+        self.click(self._CONFIRM_BTN)
+        logger.info("Checkout form submitted")
 
-    # ------------------------------------------------------------------
-    # Convenience properties for negative tests
-    # ------------------------------------------------------------------
+    # ── Read-only accessors ───────────────────────────────────────────────────
 
-    @property
-    def name_locator(self):
-        return self._INPUT_NAME
+    def get_total_amount(self) -> str:
+        """
+        Return the total amount string from the fare summary panel.
 
-    @property
-    def address_locator(self):
-        return self._ADDRESS
+        Returns the raw text including the currency symbol (e.g., "$614.35")
+        so callers can perform both format and value assertions.
+        """
+        return self.get_text(self._CHECKOUT_TOTAL)
 
-    @property
-    def city_locator(self):
-        return self._CITY
+    def get_error_message(self) -> str:
+        """Return the text of the checkout error banner (used in negative tests)."""
+        return self.get_text(self._ERROR_BANNER)
 
-    @property
-    def state_locator(self):
-        return self._STATE
-
-    @property
-    def zip_code_locator(self):
-        return self._ZIP_CODE
-
-    @property
-    def cc_number_locator(self):
-        return self._CC_NUMBER
-
-    def get_heading(self) -> str:
-        """Return the checkout page heading."""
-        return self.get_text(self._PAGE_HEADING)
+    def is_error_visible(self) -> bool:
+        """Return True if the checkout error banner is currently shown."""
+        try:
+            el = self.wait_for_visible(self._ERROR_BANNER, timeout=3)
+            return el.is_displayed()
+        except Exception:
+            return False

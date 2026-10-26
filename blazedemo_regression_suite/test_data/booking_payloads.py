@@ -1,69 +1,72 @@
 """
-Test data payloads for BlazeDemo regression suite.
+booking_payloads.py — Parameterized Test Data for SkyBook Regression Suite.
 
-Centralised data store for:
-- Valid passenger / billing profiles.
-- Route matrix used in parameterised tests.
-- Combined booking payloads for E2E tests.
+Academic Purpose:
+    Separating test data from test logic is a key principle of the Page Object
+    Model pattern.  When the application's data (routes, passenger details) changes,
+    only this file needs updating — the test logic remains untouched.
+
+    This module defines:
+      - Valid passenger data for the happy-path E2E test.
+      - The default E2E route (Philadelphia → Buenos Aires).
+      - A parameterized route matrix for multi-route smoke testing.
+      - Invalid datasets for negative/boundary tests.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+import datetime
 
-# ---------------------------------------------------------------------------
-# Passenger / billing profiles
-# ---------------------------------------------------------------------------
+# ── Default E2E Route ─────────────────────────────────────────────────────────
+# Used by the end-to-end happy-path test.
+E2E_ROUTE = ("Philadelphia", "Buenos Aires")
 
-VALID_PASSENGER_DATA: Dict[str, str] = {
-    "name":                "John Doe",
-    "address":             "123 Automation Lane",
-    "city":                "San Francisco",
-    "state":               "California",
-    "zip_code":            "94105",
-    "card_type":           "Visa",
-    "credit_card_number":  "4111111111111111",
-    "credit_card_month":   "12",
-    "credit_card_year":    "2027",
-    "name_on_card":        "JOHN DOE",
-    "remember_me":         False,
+# Travel date: tomorrow's date in YYYY-MM-DD format (always valid)
+TOMORROW = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+
+# ── Valid Passenger Data ──────────────────────────────────────────────────────
+# All fields required for a successful checkout form submission.
+VALID_PASSENGER_DATA: dict = {
+    "name":   "Alexandra Chen",
+    "email":  "a.chen@testmail.com",
+    "cc_num": "4111111111111111",  # Luhn-valid Visa test card
+    "cc_exp": "12/27",
+    "cc_cvv": "123",
 }
 
-# Partial data — name and address omitted (used in boundary / negative tests)
-PARTIAL_PASSENGER_DATA: Dict[str, str] = {
-    "name":                "",
-    "address":             "",
-    "city":                "New York",
-    "state":               "New York",
-    "zip_code":            "10001",
-    "card_type":           "Visa",
-    "credit_card_number":  "4111111111111111",
-    "credit_card_month":   "06",
-    "credit_card_year":    "2026",
-    "name_on_card":        "",
+# ── Route Matrix for Parameterized Tests ─────────────────────────────────────
+# Each tuple: (departure_city, destination_city, expected_min_flights)
+# Used in test_flight_search.py to verify multiple routes return results.
+ROUTE_MATRIX = [
+    ("Philadelphia",  "Buenos Aires", 1),
+    ("New York",      "London",       1),
+    ("Los Angeles",   "Tokyo",        1),
+    ("Chicago",       "Paris",        1),
+    ("Boston",        "Amsterdam",    1),
+]
+
+# ── Invalid/Boundary Datasets ────────────────────────────────────────────────
+# Used in negative tests to verify form validation behaviour.
+INVALID_PASSENGER_DATA_MISSING_NAME: dict = {
+    "name":   "",                     # Empty name — should trigger validation
+    "email":  "a.chen@testmail.com",
+    "cc_num": "4111111111111111",
+    "cc_exp": "12/27",
+    "cc_cvv": "123",
 }
 
-# ---------------------------------------------------------------------------
-# Route matrix — (departure, destination) tuples
-# ---------------------------------------------------------------------------
+INVALID_PASSENGER_DATA_BAD_EMAIL: dict = {
+    "name":   "Test User",
+    "email":  "not-an-email",         # Missing @ — should trigger validation
+    "cc_num": "4111111111111111",
+    "cc_exp": "12/27",
+    "cc_cvv": "123",
+}
 
-ROUTE_MATRIX: List[Tuple[str, str]] = [
-    ("Boston",     "London"),
-    ("Portland",   "Berlin"),
-    ("San Diego",  "Rome"),
-]
-
-# Primary E2E route
-E2E_ROUTE: Tuple[str, str] = ("Paris", "Buenos Aires")
-
-# ---------------------------------------------------------------------------
-# Combined booking payloads (route + passenger)
-# ---------------------------------------------------------------------------
-
-BOOKING_PAYLOADS: List[Dict] = [
-    {
-        "route":     E2E_ROUTE,
-        "passenger": VALID_PASSENGER_DATA,
-        "label":     "Paris_to_BuenosAires_Visa",
-    },
-]
+INVALID_PASSENGER_DATA_SHORT_CARD: dict = {
+    "name":   "Test User",
+    "email":  "test@example.com",
+    "cc_num": "1234",                 # Too short — should trigger validation
+    "cc_exp": "12/27",
+    "cc_cvv": "123",
+}

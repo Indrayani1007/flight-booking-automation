@@ -1,6 +1,5 @@
 {
-  "base_url": "https://blazedemo.com",
-  "implicit_wait": 0,
+  "base_url": "http://localhost:8000",
   "explicit_wait": 15,
   "page_load_timeout": 30,
   "screenshot_dir": "reports/screenshots",

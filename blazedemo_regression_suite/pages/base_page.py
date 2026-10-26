@@ -1,23 +1,35 @@
 """
-BasePage — Foundation class for all Page Object Models.
+base_page.py — Foundation Page Object for the SkyBook Regression Suite.
 
-Provides:
-- Explicit-wait wrappers (no time.sleep anywhere).
-- StaleElementReferenceException retry decorator.
-- Scroll-into-view helper.
-- Screenshot capture to cfg.screenshot_dir.
+Academic Purpose:
+    The BasePage class implements the Page Object Model (POM) foundation layer.
+    Every concrete page class (FlightFinderPage, ResultsPage, etc.) inherits
+    from BasePage, which centralises all low-level Selenium interactions.
+
+    Why this pattern?
+    ─────────────────
+    Without a base class, every page object would repeat the same WebDriverWait
+    boilerplate.  A bug in the wait strategy would need fixing in N places.
+    With BasePage, fixing the wait strategy here propagates to all pages — this
+    is the Open/Closed Principle applied to test automation.
+
+Key Design Decisions:
+    1. ALL interactions go through explicit waits — time.sleep() is never used.
+    2. Stale element retries prevent flaky failures on dynamic pages.
+    3. screenshot() is available to any page for on-demand debugging.
 """
 
 from __future__ import annotations
 
+import datetime
 import functools
+import logging
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, List, Tuple, TypeVar
+from typing import Callable, List
 
 from selenium.common.exceptions import (
-    ElementClickInterceptedException,
+    NoSuchElementException,
     StaleElementReferenceException,
     TimeoutException,
 )
@@ -25,270 +37,231 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.select import Select
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
-from config.config import cfg
-from utilities.logger import get_logger
-
-F = TypeVar("F", bound=Callable[..., Any])
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Retry decorator for StaleElementReferenceException
-# ---------------------------------------------------------------------------
-
-def _retry_on_stale(attempts: int = 3, delay: float = 0.5) -> Callable[[F], F]:
+def _retry_on_stale(max_attempts: int = 3, delay: float = 0.5):
     """
-    Decorator that re-invokes a method up to *attempts* times when a
-    :class:`StaleElementReferenceException` is raised.
+    Decorator factory: retry the wrapped method when a StaleElementReferenceException
+    is raised.
+
+    Why stale element exceptions occur:
+        Modern single-page applications re-render parts of the DOM after a user
+        action (e.g., search results replacing a spinner).  A WebElement reference
+        obtained before the re-render becomes "stale" and raises this exception.
+
+    Strategy:
+        Wait `delay` seconds and retry up to `max_attempts` times before giving up.
+        This mirrors how a real user would naturally wait and retry.
     """
-    def decorator(fn: F) -> F:
+    def decorator(fn: Callable):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            last_exc: Exception | None = None
-            for attempt in range(1, attempts + 1):
+            last_exc = None
+            for attempt in range(1, max_attempts + 1):
                 try:
                     return fn(*args, **kwargs)
                 except StaleElementReferenceException as exc:
                     last_exc = exc
                     logger.warning(
-                        "StaleElementReferenceException on '%s' (attempt %d/%d)",
-                        fn.__name__,
-                        attempt,
-                        attempts,
+                        "StaleElementReferenceException on attempt %d/%d for '%s'",
+                        attempt, max_attempts, fn.__name__,
                     )
                     time.sleep(delay)
-            raise last_exc  # type: ignore[misc]
-        return wrapper  # type: ignore[return-value]
+            raise last_exc
+        return wrapper
     return decorator
 
 
-# ---------------------------------------------------------------------------
-# BasePage
-# ---------------------------------------------------------------------------
-
 class BasePage:
     """
-    Base class for all page objects.
+    Abstract foundation for all SkyBook page objects.
 
-    Each page object *must* call ``super().__init__(driver)`` and define
-    a ``PAGE_URL`` class attribute if it is a navigable entry point.
-
-    Args:
-        driver: Active :class:`WebDriver` instance injected by the fixture.
+    Constructor Args:
+        driver: Active WebDriver session managed by the pytest fixture.
     """
-
-    PAGE_URL: str = ""
 
     def __init__(self, driver: WebDriver) -> None:
         self.driver = driver
-        self._wait = WebDriverWait(
-            driver,
-            timeout=cfg.explicit_wait,
-            poll_frequency=0.3,
-            ignored_exceptions=[StaleElementReferenceException],
-        )
+        from config.config import cfg  # Lazy import avoids circular dependency
+        self._wait = WebDriverWait(driver, cfg.explicit_wait)
+        self._cfg  = cfg
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────────
     # Navigation
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────────
 
-    def open(self) -> "BasePage":
-        """Navigate to PAGE_URL and return self for method chaining."""
-        url = cfg.base_url + self.PAGE_URL if self.PAGE_URL else cfg.base_url
+    def open(self, path: str = "") -> None:
+        """
+        Navigate to a URL path relative to the configured base URL.
+
+        Args:
+            path: Relative path (e.g., "results.html"). Empty string → home page.
+        """
+        url = f"{self._cfg.base_url}/{path}".rstrip("/")
+        # Ensure we always open from root when path is empty
+        if not path:
+            url = self._cfg.base_url + "/index.html"
         logger.info("Navigating to: %s", url)
         self.driver.get(url)
-        return self
 
-    # ------------------------------------------------------------------
-    # Wait helpers
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────────────────
+    # Core wait wrappers — every interaction uses one of these
+    # ──────────────────────────────────────────────────────────────────────────
 
-    def _wait_for(
-        self,
-        condition,
-        timeout: int | None = None,
-        message: str = "",
-    ) -> Any:
-        """Generic explicit-wait helper."""
-        wait = (
-            WebDriverWait(self.driver, timeout, poll_frequency=0.3)
-            if timeout
-            else self._wait
-        )
-        return wait.until(condition, message=message)
-
-    def wait_for_visibility(
-        self,
-        locator: Tuple[str, str],
-        timeout: int | None = None,
-    ) -> WebElement:
-        """Wait until element at *locator* is visible, return it."""
-        return self._wait_for(
-            EC.visibility_of_element_located(locator),
-            timeout=timeout,
-            message=f"Element not visible: {locator}",
-        )
-
-    def wait_for_clickable(
-        self,
-        locator: Tuple[str, str],
-        timeout: int | None = None,
-    ) -> WebElement:
-        """Wait until element at *locator* is clickable, return it."""
-        return self._wait_for(
-            EC.element_to_be_clickable(locator),
-            timeout=timeout,
-            message=f"Element not clickable: {locator}",
-        )
-
-    def wait_for_presence(
-        self,
-        locator: Tuple[str, str],
-        timeout: int | None = None,
-    ) -> WebElement:
-        """Wait until element at *locator* is present in DOM, return it."""
-        return self._wait_for(
-            EC.presence_of_element_located(locator),
-            timeout=timeout,
-            message=f"Element not in DOM: {locator}",
-        )
-
-    def wait_for_all_presence(
-        self,
-        locator: Tuple[str, str],
-        timeout: int | None = None,
-    ) -> List[WebElement]:
-        """Wait until all elements matching *locator* are present, return list."""
-        return self._wait_for(
-            EC.presence_of_all_elements_located(locator),
-            timeout=timeout,
-            message=f"Elements not in DOM: {locator}",
-        )
-
-    # ------------------------------------------------------------------
-    # Action helpers — zero time.sleep
-    # ------------------------------------------------------------------
-
-    def _scroll_into_view(self, element: WebElement) -> None:
-        """Scroll element into the viewport using JS."""
-        self.driver.execute_script(
-            "arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});",
-            element,
-        )
-
-    @_retry_on_stale(attempts=3, delay=0.5)
-    def click(self, locator: Tuple[str, str]) -> None:
+    def wait_for_visible(self, locator: tuple, timeout: int | None = None) -> WebElement:
         """
-        Wait for element to be clickable, scroll into view, and click.
+        Wait until the element identified by ``locator`` is visible in the DOM.
 
-        Falls back to JS click if :class:`ElementClickInterceptedException`
-        is raised (e.g. element covered by banner/overlay).
+        Visibility means the element exists AND occupies space on the page
+        (i.e., it is not hidden with ``display:none`` or ``visibility:hidden``).
 
         Args:
-            locator: A ``(By.*, selector)`` tuple.
-        """
-        logger.debug("Clicking: %s", locator)
-        element = self.wait_for_clickable(locator)
-        self._scroll_into_view(element)
-        try:
-            element.click()
-        except ElementClickInterceptedException:
-            logger.warning("Regular click intercepted, using JS click for: %s", locator)
-            self.driver.execute_script("arguments[0].click();", element)
-
-    @_retry_on_stale(attempts=3, delay=0.5)
-    def fill(self, locator: Tuple[str, str], text: str) -> None:
-        """
-        Wait for visibility, clear the field, and type *text*.
-
-        Args:
-            locator: A ``(By.*, selector)`` tuple.
-            text:    Text to type into the input field.
-        """
-        logger.debug("Filling '%s' into: %s", text, locator)
-        element = self.wait_for_visibility(locator)
-        element.clear()
-        element.send_keys(text)
-
-    @_retry_on_stale(attempts=3, delay=0.5)
-    def select_by_text(self, locator: Tuple[str, str], text: str) -> None:
-        """
-        Wait for presence of a ``<select>`` element and select by visible text.
-
-        Args:
-            locator: A ``(By.*, selector)`` tuple pointing to the select element.
-            text:    The visible option text to select.
-        """
-        logger.debug("Selecting '%s' in: %s", text, locator)
-        element = self.wait_for_presence(locator)
-        Select(element).select_by_visible_text(text)
-
-    @_retry_on_stale(attempts=3, delay=0.5)
-    def select_by_value(self, locator: Tuple[str, str], value: str) -> None:
-        """Select a ``<select>`` option by its value attribute."""
-        logger.debug("Selecting value '%s' in: %s", value, locator)
-        element = self.wait_for_presence(locator)
-        Select(element).select_by_value(value)
-
-    @_retry_on_stale(attempts=3, delay=0.5)
-    def get_text(self, locator: Tuple[str, str]) -> str:
-        """
-        Return the stripped inner text of the located element.
-
-        Args:
-            locator: A ``(By.*, selector)`` tuple.
+            locator: A (By.X, value) tuple — e.g., (By.ID, "departure").
+            timeout: Optional override in seconds; defaults to config value.
 
         Returns:
-            Stripped text content of the element.
+            The visible WebElement ready for interaction.
+
+        Raises:
+            TimeoutException: If the element does not become visible within timeout.
         """
-        element = self.wait_for_visibility(locator)
-        return element.text.strip()
-
-    @_retry_on_stale(attempts=3, delay=0.5)
-    def get_attribute(self, locator: Tuple[str, str], attribute: str) -> str:
-        """Return an attribute value from the located element."""
-        element = self.wait_for_presence(locator)
-        return element.get_attribute(attribute) or ""
-
-    def is_element_present(self, locator: Tuple[str, str], timeout: int = 3) -> bool:
-        """Return True if element appears in DOM within *timeout* seconds."""
+        wait = WebDriverWait(self.driver, timeout) if timeout else self._wait
         try:
-            self.wait_for_presence(locator, timeout=timeout)
-            return True
+            return wait.until(EC.visibility_of_element_located(locator))
         except TimeoutException:
-            return False
+            logger.error("Timeout waiting for visible: %s", locator)
+            raise
 
-    # ------------------------------------------------------------------
-    # Screenshot
-    # ------------------------------------------------------------------
-
-    def take_screenshot(self, filename: str) -> Path:
+    def wait_for_clickable(self, locator: tuple, timeout: int | None = None) -> WebElement:
         """
-        Capture the full browser viewport and save to the screenshots directory.
+        Wait until the element is visible AND enabled (i.e., safe to click).
+
+        'Clickable' is a stricter condition than 'visible' — it ensures the element
+        is not disabled and is interactable, preventing ElementNotInteractableError.
+        """
+        wait = WebDriverWait(self.driver, timeout) if timeout else self._wait
+        try:
+            return wait.until(EC.element_to_be_clickable(locator))
+        except TimeoutException:
+            logger.error("Timeout waiting for clickable: %s", locator)
+            raise
+
+    def wait_for_presence(self, locator: tuple, timeout: int | None = None) -> WebElement:
+        """
+        Wait until the element is present in the DOM (not necessarily visible).
+
+        Used for hidden elements whose text/attributes we need to read before
+        they become visible.
+        """
+        wait = WebDriverWait(self.driver, timeout) if timeout else self._wait
+        return wait.until(EC.presence_of_element_located(locator))
+
+    def wait_for_all_visible(self, locator: tuple, timeout: int | None = None) -> List[WebElement]:
+        """
+        Wait until ALL elements matching ``locator`` are visible.
+        Used to wait for dynamically generated lists (e.g., flight cards).
+        """
+        wait = WebDriverWait(self.driver, timeout) if timeout else self._wait
+        return wait.until(EC.visibility_of_all_elements_located(locator))
+
+    def wait_for_invisible(self, locator: tuple, timeout: int | None = None) -> bool:
+        """
+        Wait until the element matching ``locator`` is no longer visible.
+
+        Critical for spinner-based loading patterns: we must wait for the
+        spinner to disappear before the results are ready to interact with.
+        Returns True once the element is invisible/gone.
+        """
+        wait = WebDriverWait(self.driver, timeout) if timeout else self._wait
+        try:
+            return wait.until(EC.invisibility_of_element_located(locator))
+        except TimeoutException:
+            logger.error("Spinner/element did not disappear: %s", locator)
+            raise
+
+    def wait_for_url_contains(self, fragment: str, timeout: int | None = None) -> bool:
+        """Wait until the current URL contains ``fragment``."""
+        wait = WebDriverWait(self.driver, timeout) if timeout else self._wait
+        return wait.until(EC.url_contains(fragment))
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Interaction helpers
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @_retry_on_stale()
+    def click(self, locator: tuple) -> None:
+        """Wait for element to be clickable, then click it."""
+        self.wait_for_clickable(locator).click()
+
+    @_retry_on_stale()
+    def type_text(self, locator: tuple, text: str, clear_first: bool = True) -> None:
+        """
+        Wait for an input field, optionally clear it, then type the given text.
+
+        Clearing before typing prevents text accumulation when a test re-uses
+        an already-filled field, which is a common source of flaky tests.
+        """
+        el = self.wait_for_visible(locator)
+        if clear_first:
+            el.clear()
+        el.send_keys(text)
+
+    @_retry_on_stale()
+    def select_by_value(self, locator: tuple, value: str) -> None:
+        """Select a <select> dropdown option by its ``value`` attribute."""
+        el = self.wait_for_visible(locator)
+        Select(el).select_by_value(value)
+
+    @_retry_on_stale()
+    def select_by_text(self, locator: tuple, text: str) -> None:
+        """Select a <select> dropdown option by its visible text."""
+        el = self.wait_for_visible(locator)
+        Select(el).select_by_visible_text(text)
+
+    def clear_field(self, locator: tuple) -> None:
+        """Clear the content of a form input identified by ``locator``."""
+        el = self.wait_for_visible(locator)
+        el.clear()
+
+    @_retry_on_stale()
+    def get_text(self, locator: tuple) -> str:
+        """Return the visible text of an element (stripped of whitespace)."""
+        return self.wait_for_visible(locator).text.strip()
+
+    @_retry_on_stale()
+    def get_attribute(self, locator: tuple, attr: str) -> str:
+        """Return the value of an HTML attribute on the located element."""
+        return self.wait_for_presence(locator).get_attribute(attr) or ""
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Debugging helpers
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def screenshot(self, name: str = "screenshot") -> Path:
+        """
+        Save a full-viewport screenshot to the configured screenshot directory.
 
         Args:
-            filename: Base filename (without extension) for the PNG file.
+            name: Base filename (without extension). A timestamp is appended.
 
         Returns:
-            Absolute :class:`Path` of the saved screenshot.
+            Path to the saved PNG file.
         """
-        screenshot_path = cfg.screenshot_dir / f"{filename}.png"
-        self.driver.save_screenshot(str(screenshot_path))
-        logger.info("Screenshot saved: %s", screenshot_path)
-        return screenshot_path
+        ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = self._cfg.screenshot_dir / f"{name}_{ts}.png"
+        self.driver.save_screenshot(str(path))
+        logger.info("Screenshot saved: %s", path)
+        return path
 
-    # ------------------------------------------------------------------
-    # Page title / URL helpers
-    # ------------------------------------------------------------------
-
-    def get_page_title(self) -> str:
-        """Return the current browser page title."""
-        return self.driver.title
-
-    def get_current_url(self) -> str:
-        """Return the current browser URL."""
+    @property
+    def current_url(self) -> str:
+        """Return the browser's current URL."""
         return self.driver.current_url
+
+    @property
+    def title(self) -> str:
+        """Return the browser page title."""
+        return self.driver.title

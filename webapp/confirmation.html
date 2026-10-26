@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyBook — Booking Confirmed</title>
+  <link rel="stylesheet" href="static/style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+
+  <!-- Navigation -->
+  <nav class="navbar px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <a href="index.html" class="text-white font-extrabold text-2xl tracking-tight">✈ SkyBook</a>
+    </div>
+  </nav>
+
+  <div class="max-w-2xl mx-auto px-6 py-16" id="confirmation-wrap">
+
+    <!-- Success banner -->
+    <div class="text-center mb-10">
+      <div class="text-7xl mb-4">✅</div>
+      <h1 class="text-4xl font-extrabold text-gray-800 mb-3">Booking Confirmed!</h1>
+      <p class="text-gray-500 text-lg">
+        Your flight has been booked successfully. A confirmation email has been sent.
+      </p>
+    </div>
+
+    <!-- Confirmation card -->
+    <div class="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+
+      <!-- Reference number -->
+      <div class="text-center mb-8">
+        <p class="text-sm text-gray-500 mb-1">Booking Reference</p>
+        <p class="text-4xl font-extrabold tracking-widest text-blue-600"
+           id="conf-ref" data-testid="booking-reference">—</p>
+        <span class="conf-badge mt-2" id="conf-status" data-testid="booking-status">CONFIRMED</span>
+      </div>
+
+      <h2 class="font-bold text-lg text-gray-700 mb-4 border-b pb-2">Flight Details</h2>
+
+      <div class="text-sm text-gray-700">
+        <div class="conf-row">
+          <span class="text-gray-500">Passenger</span>
+          <span class="font-semibold" id="conf-name" data-testid="passenger-name"></span>
+        </div>
+        <div class="conf-row">
+          <span class="text-gray-500">Airline</span>
+          <span class="font-semibold" id="conf-airline" data-testid="airline-name"></span>
+        </div>
+        <div class="conf-row">
+          <span class="text-gray-500">Route</span>
+          <span class="font-semibold text-blue-600" id="conf-route" data-testid="route"></span>
+        </div>
+        <div class="conf-row">
+          <span class="text-gray-500">Flight Number</span>
+          <span class="font-semibold" id="conf-flight" data-testid="flight-number"></span>
+        </div>
+        <div class="conf-row">
+          <span class="text-gray-500">Date</span>
+          <span class="font-semibold" id="conf-date" data-testid="travel-date"></span>
+        </div>
+        <div class="conf-row">
+          <span class="text-gray-500">Departure → Arrival</span>
+          <span class="font-semibold"><span id="conf-dep"></span> → <span id="conf-arr"></span></span>
+        </div>
+        <div class="conf-row">
+          <span class="text-gray-500">Passengers</span>
+          <span class="font-semibold" id="conf-pax" data-testid="passenger-count"></span>
+        </div>
+        <div class="conf-row">
+          <span class="text-gray-700 font-bold">Total Charged</span>
+          <span class="font-extrabold text-blue-700 text-lg" id="conf-total" data-testid="total-amount"></span>
+        </div>
+      </div>
+
+      <div class="mt-8 text-center">
+        <a href="index.html" class="btn-primary">Book Another Flight</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-gray-900 text-gray-400 text-sm text-center py-6">
+    © 2025 SkyBook Inc. &nbsp;|&nbsp; Demo application for testing purposes.
+  </footer>
+
+  <script src="static/app.js"></script>
+</body>
+</html>

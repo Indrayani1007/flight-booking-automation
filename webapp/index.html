@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyBook — Find Your Flight</title>
+  <link rel="stylesheet" href="static/style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+
+  <!-- ── Navigation ── -->
+  <nav class="navbar px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <a href="index.html" class="text-white font-extrabold text-2xl tracking-tight">
+        ✈ SkyBook
+      </a>
+      <div class="text-gray-300 text-sm hidden md:block">
+        Trusted by 2M+ travellers worldwide
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Hero section ── -->
+  <section class="hero flex items-center justify-center px-4 py-16">
+    <div class="relative z-10 w-full max-w-3xl text-center text-white mb-8">
+      <h1 class="text-5xl md:text-6xl font-extrabold leading-tight mb-4">
+        Your Next Adventure<br/>Starts Here
+      </h1>
+      <p class="text-xl text-blue-200 mb-10">
+        Search hundreds of flights. Book in seconds. Fly with confidence.
+      </p>
+
+      <!-- ── Search Card ── -->
+      <div class="search-card p-8 text-left" id="search-widget">
+        <h2 class="text-gray-800 font-bold text-xl mb-6">Search Flights</h2>
+
+        <!-- Error banner -->
+        <div id="form-error" class="hidden bg-red-50 border border-red-300 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm"></div>
+
+        <form id="search-form" novalidate>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <!-- Departure -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-600 mb-1" for="departure">
+                🛫 Departure City
+              </label>
+              <select id="departure" name="departure" class="form-input" data-testid="departure-select">
+                <option value="">Select departure city…</option>
+              </select>
+            </div>
+            <!-- Destination -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-600 mb-1" for="destination">
+                🛬 Destination City
+              </label>
+              <select id="destination" name="destination" class="form-input" data-testid="destination-select">
+                <option value="">Select destination city…</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <!-- Date -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-600 mb-1" for="travel-date">
+                📅 Travel Date
+              </label>
+              <input type="date" id="travel-date" name="travel-date" class="form-input" data-testid="travel-date" />
+            </div>
+            <!-- Passengers -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-600 mb-1" for="passengers">
+                👤 Passengers
+              </label>
+              <select id="passengers" name="passengers" class="form-input" data-testid="passengers-select">
+                <option value="1">1 Passenger</option>
+                <option value="2">2 Passengers</option>
+                <option value="3">3 Passengers</option>
+                <option value="4">4 Passengers</option>
+                <option value="5">5 Passengers</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" id="search-btn" class="btn-primary w-full text-center text-lg py-3" data-testid="search-button">
+            Search Available Flights →
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features strip ── -->
+  <section class="bg-white py-14 px-6">
+    <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+      <div>
+        <div class="text-4xl mb-3">🛡️</div>
+        <h3 class="font-bold text-gray-800 text-lg mb-1">Secure Payments</h3>
+        <p class="text-gray-500 text-sm">256-bit SSL encryption on every transaction.</p>
+      </div>
+      <div>
+        <div class="text-4xl mb-3">💸</div>
+        <h3 class="font-bold text-gray-800 text-lg mb-1">Best Price Guarantee</h3>
+        <p class="text-gray-500 text-sm">We match any lower price you find within 24 hours.</p>
+      </div>
+      <div>
+        <div class="text-4xl mb-3">📞</div>
+        <h3 class="font-bold text-gray-800 text-lg mb-1">24/7 Support</h3>
+        <p class="text-gray-500 text-sm">Live chat and phone support around the clock.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="bg-gray-900 text-gray-400 text-sm text-center py-6">
+    © 2025 SkyBook Inc. All rights reserved. &nbsp;|&nbsp; Demo application for testing purposes.
+  </footer>
+
+  <script src="static/app.js"></script>
+</body>
+</html>
