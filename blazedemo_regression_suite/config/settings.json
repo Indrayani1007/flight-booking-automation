@@ -1,0 +1,11 @@
+{
+  "base_url": "https://blazedemo.com",
+  "implicit_wait": 0,
+  "explicit_wait": 15,
+  "page_load_timeout": 30,
+  "screenshot_dir": "reports/screenshots",
+  "log_file": "reports/test_run.log",
+  "supported_browsers": ["chrome", "firefox", "edge"],
+  "retry_attempts": 3,
+  "retry_delay": 1
+}
